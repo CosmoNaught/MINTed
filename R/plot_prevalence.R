@@ -8,6 +8,7 @@
 #' @param start_timestep Integer, optional. Include data with timesteps >= this value (days).
 #' @param end_timestep Integer, optional. Include data with timesteps <= this value (days).
 #' @param output_dir Optional dir to save a PDF. If NULL/"" -> plot to current device.
+#' @param full_name Optinal flag to print the initial parameters used within the simulation launch
 #' @param table_name Name of the base table. Default "simulation_results".
 #' @param days_per_year Numeric, default 365.
 #'
@@ -19,6 +20,7 @@ plot_prevalence <- function(con = NULL,
                            start_timestep = NULL,
                            end_timestep = NULL,
                            output_dir = NULL,
+                           full_name = FALSE,
                            table_name = "simulation_results",
                            days_per_year = 365) {
   
@@ -97,9 +99,21 @@ plot_prevalence <- function(con = NULL,
   }
   
   meta_sql <- sprintf("
-    SELECT parameter_index, global_index,
-           treatment_dt_bednet, treatment_dt_irs, treatment_dt_lsm
-    FROM %s
+  SELECT parameter_index,
+  global_index,
+  treatment_dt_bednet, treatment_dt_irs, treatment_dt_lsm, 
+  eir,
+  Q0,
+  phi_bednets seasonal,
+  routine,
+  dn0_use,
+  dn0_future,
+  itn_use,
+  irs_use,
+  itn_future,
+  irs_future,
+  lsm        
+  FROM %s
     WHERE %s
     LIMIT 1
   ", dbQuoteIdentifier(con, table_name), meta_key_clause)
@@ -138,20 +152,19 @@ plot_prevalence <- function(con = NULL,
   if (!is.finite(y_min) || !is.finite(y_max)) {
     y_min <- 0; y_max <- 1
   }
-  
-  # base plot
+
   plot(
     NA,
     xlim = c(x_min, x_max),
     ylim = c(y_min, y_max),
     xlab = "Time (years)",
     ylab = "Prevalence",
-    main = sprintf("Prevalence over time\nParameter Index: %s | Global Index: %s",
-                   meta$parameter_index[1], meta$global_index[1]),
+    main = make_main(meta, full_name),
     type = "n",
     las = 1,
     bty = "l"
   )
+
   
   # all simulations (grey)
   sims <- sort(unique(sim_df$simulation_index))
