@@ -21,7 +21,6 @@ An R package to **explore, query, visualise, and tabulate** MINT (Malaria INTerv
 
 ```r
 # Install from GitHub
-# (Change the repo path if your remote is different)
 devtools::install_github("CosmoNaught/MINTed")
 ```
 
