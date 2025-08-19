@@ -12,6 +12,7 @@ plot_prevalence(
   start_timestep = NULL,
   end_timestep = NULL,
   output_dir = NULL,
+  full_name = FALSE,
   table_name = "simulation_results",
   days_per_year = 365
 )
@@ -31,6 +32,8 @@ Required if con is not provided.}
 \item{end_timestep}{Integer, optional. Include data with timesteps <= this value (days).}
 
 \item{output_dir}{Optional dir to save a PDF. If NULL/"" -> plot to current device.}
+
+\item{full_name}{Optinal flag to print the initial parameters used within the simulation launch}
 
 \item{table_name}{Name of the base table. Default "simulation_results".}
 

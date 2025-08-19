@@ -136,3 +136,88 @@ build_pred <- function(col, val, con) {
   warning(sprintf("Filter for column '%s' is a complex type; attempting string equality.", col))
   sprintf("CAST(%s AS TEXT) = %s", col_sql, as.character(dbQuoteString(con, as.character(val))))
 }
+
+#' Build a concise or expanded panel title for prevalence plots
+#'
+#' Constructs a one- or two-line string beginning with "Prevalence over time".
+#' In short mode (default), it appends the first elements of `parameter_index`
+#' and `global_index`. In full mode, it prints name–value pairs for selected
+#' fields from `meta`, formatting non-index fields with [fmt3()].
+#'
+#' @param meta A `data.frame`/list-like object containing at least
+#'   `parameter_index` and `global_index`. If present, the following fields are
+#'   also included in the expanded output (in this order):
+#'   `eir`, `Q0`, `phi_bednets`, `seasonal`, `routine`, `dn0_use`, `dn0_future`,
+#'   `itn_use`, `irs_use`, `itn_future`, `irs_future`, `lsm`.
+#'   Only the first element of each field is used.
+#' @param full_name Logical. If `FALSE` (default), return a short single-line
+#'   string with indices only. If `TRUE`, include all available fields and wrap
+#'   onto a second line after `wrap_after` pairs.
+#' @param wrap_after Integer or `NULL`. Number of name–value pairs to include on
+#'   the first line when `full_name = TRUE`. If `NULL` (default), wraps after
+#'   `ceiling(n/2)` to force two lines where `n` is the number of included pairs.
+#'
+#' @return A length-1 character string suitable for use as a plot title/subtitle.
+#'
+#' @details
+#' Non-index fields are formatted via [fmt3()] (3 significant figures for
+#' numerics; `"TRUE"`/`"FALSE"`/`"NA"` for logicals; `as.character()` otherwise).
+#'
+#' @noRd
+make_main <- function(meta, full_name = FALSE, wrap_after = NULL) {
+  short <- sprintf(
+    "Prevalence over time\nParameter Index: %s | Global Index: %s",
+    as.character(meta$parameter_index[1]),
+    as.character(meta$global_index[1])
+  )
+  if (!full_name) return(short)
+
+  fields <- c(
+    "parameter_index","global_index",
+    "eir","Q0","phi_bednets","seasonal","routine",
+    "dn0_use","dn0_future","itn_use","irs_use",
+    "itn_future","irs_future","lsm"
+  )
+  fields <- intersect(fields, names(meta))
+
+  pairs <- vapply(fields, function(f) {
+    val_str <- if (f %in% c("parameter_index","global_index")) {
+      as.character(meta[[f]][1])
+    } else {
+      fmt3(meta[[f]])
+    }
+    paste0(f, ": ", val_str)
+  }, FUN.VALUE = character(1))
+
+  n <- length(pairs)
+  if (is.null(wrap_after)) wrap_after <- ceiling(n / 2)  # force 2 lines
+  line1 <- paste(pairs[seq_len(min(wrap_after, n))], collapse = " | ")
+  line2 <- if (n > wrap_after) paste(pairs[(wrap_after + 1):n], collapse = " | ") else ""
+
+  paste0("Prevalence over time\n", line1, if (nzchar(line2)) paste0("\n", line2) else "")
+}
+
+#' Format a value with 3 significant figures (utility)
+#'
+#' Returns a character string for the first element of `v`:
+#' - If empty, `NULL`, or `NA`, returns `"NA"`.
+#' - If numeric, formats with 3 significant figures using `formatC(..., format = "g")`.
+#' - If logical, returns `"TRUE"`, `"FALSE"`, or `"NA"`.
+#' - Otherwise, coerces with `as.character()`.
+#'
+#' @param v A vector (numeric, logical, character, etc.). Only `v[1]` is used.
+#'
+#' @return A length-1 character string.
+#'
+#' @noRd
+fmt3 <- function(v) {
+  if (length(v) < 1 || is.null(v) || is.na(v[1])) return("NA")
+    x <- v[1]
+    if (is.numeric(x)) {
+      return(formatC(x, digits = 3, format = "g"))  # 3 significant figs
+    } else if (is.logical(x)) {
+      return(ifelse(is.na(x), "NA", ifelse(x, "TRUE", "FALSE")))
+    } else {
+      return(as.character(x))
+    }
+}
