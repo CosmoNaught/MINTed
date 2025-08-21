@@ -1,8 +1,8 @@
 Package: MINTed
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Post-process MINTs results stored in a DuckDB database.
+Version: 1.0.0
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
+    person("Cosmo", "Santoni", , "first.last@example.com", role = c("aut", "cre"))
 Description: What the package does (one paragraph).
 License: MIT + file LICENSE
 Encoding: UTF-8
