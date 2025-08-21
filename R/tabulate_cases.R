@@ -1,3 +1,41 @@
+#' Tabulate annual cases_per_1000 vs a baseline year
+#'
+#' @description
+#' For a given parameter set (by `parameter_index` OR `global_index`), compute the
+#' annual mean of `cases_per_1000` for a baseline year and one or more future years,
+#' then report absolute and percent changes relative to baseline.
+#'
+#' Windows are year-aligned as:
+#'   year y -> timesteps in [y*days_per_year, (y+1)*days_per_year)
+#' (with timesteps assumed to start at 1).
+#'
+#' @param con Optional DuckDB connection object. If provided, `raw_db_path` is ignored.
+#' @param raw_db_path Path to the .duckdb file. Required if `con` is not provided.
+#' @param parameter_index Integer (optional). One of `parameter_index` OR `global_index` must be provided.
+#' @param global_index Character (optional). One of `parameter_index` OR `global_index` must be provided.
+#' @param baseline_year Integer (>= 0). Year used as the baseline (e.g., 2 means days [2*365, 3*365)).
+#' @param future_years Integer vector. Years strictly greater than `baseline_year`
+#'   (e.g., c(4,5,6)). Any years <= baseline are dropped with a warning.
+#' @param stochastic_average Logical. If TRUE (default), average across simulations for
+#'   each year using only simulations that have data for both the baseline and that
+#'   future year. If FALSE, return per-simulation rows.
+#' @param output_dir Optional directory to write a CSV summary. If NULL/"" no file is written.
+#' @param table_name Table name in DuckDB. Default "simulation_results".
+#' @param days_per_year Numeric, default 365.
+#'
+#' @return
+#' If `stochastic_average = TRUE`: a data.frame with one row per future year and columns:
+#'   parameter_index, global_index, baseline_year, future_year, baseline_cases_per_1000,
+#'   future_cases_per_1000, delta_cases_per_1000, percent_change, n_sims_used.
+#'
+#' If `stochastic_average = FALSE`: one row per (simulation_index, future_year) with the same
+#'   metrics plus `simulation_index`.
+#'
+#' If `output_dir` is provided, a CSV is written and the function still returns the data.frame.
+#'
+#' @export
+#' @importFrom DBI dbConnect dbDisconnect dbExistsTable dbGetQuery dbQuoteIdentifier dbQuoteString
+#' @importFrom duckdb duckdb
 tabulate_cases <- function(con = NULL,
                            raw_db_path = NULL,
                            parameter_index = NULL,
