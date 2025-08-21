@@ -4,12 +4,12 @@
 \name{MINTed-package}
 \alias{MINTed}
 \alias{MINTed-package}
-\title{MINTed: What the Package Does (One Line, Title Case)}
+\title{MINTed: Post-process MINTs results stored in a DuckDB database}
 \description{
 What the package does (one paragraph).
 }
 \author{
-\strong{Maintainer}: First Last \email{first.last@example.com}
+\strong{Maintainer}: Cosmo Santoni \email{first.last@example.com}
 
 }
 \keyword{internal}

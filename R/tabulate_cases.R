@@ -1,41 +1,3 @@
-#' Tabulate annual cases_per_1000 vs a baseline year
-#'
-#' @description
-#' For a given parameter set (by `parameter_index` OR `global_index`), compute the
-#' annual mean of `cases_per_1000` for a baseline year and one or more future years,
-#' then report absolute and percent changes relative to baseline.
-#'
-#' Windows are year-aligned as:
-#'   year y -> timesteps in [y*days_per_year, (y+1)*days_per_year)
-#' (with timesteps assumed to start at 1).
-#'
-#' @param con Optional DuckDB connection object. If provided, `raw_db_path` is ignored.
-#' @param raw_db_path Path to the .duckdb file. Required if `con` is not provided.
-#' @param parameter_index Integer (optional). One of `parameter_index` OR `global_index` must be provided.
-#' @param global_index Character (optional). One of `parameter_index` OR `global_index` must be provided.
-#' @param baseline_year Integer (>= 0). Year used as the baseline (e.g., 2 means days [2*365, 3*365)).
-#' @param future_years Integer vector. Years strictly greater than `baseline_year`
-#'   (e.g., c(4,5,6)). Any years <= baseline are dropped with a warning.
-#' @param stochastic_average Logical. If TRUE (default), average across simulations for
-#'   each year using only simulations that have data for both the baseline and that
-#'   future year. If FALSE, return per-simulation rows.
-#' @param output_dir Optional directory to write a CSV summary. If NULL/"" no file is written.
-#' @param table_name Table name in DuckDB. Default "simulation_results".
-#' @param days_per_year Numeric, default 365.
-#'
-#' @return
-#' If `stochastic_average = TRUE`: a data.frame with one row per future year and columns:
-#'   parameter_index, global_index, baseline_year, future_year, baseline_cases_per_1000,
-#'   future_cases_per_1000, delta_cases_per_1000, percent_change, n_sims_used.
-#'
-#' If `stochastic_average = FALSE`: one row per (simulation_index, future_year) with the same
-#'   metrics plus `simulation_index`.
-#'
-#' If `output_dir` is provided, a CSV is written and the function still returns the data.frame.
-#'
-#' @export
-#' @importFrom DBI dbConnect dbDisconnect dbExistsTable dbGetQuery dbQuoteIdentifier dbQuoteString
-#' @importFrom duckdb duckdb
 tabulate_cases <- function(con = NULL,
                            raw_db_path = NULL,
                            parameter_index = NULL,
@@ -50,14 +12,14 @@ tabulate_cases <- function(con = NULL,
   if (is.null(con)) {
     if (is.null(raw_db_path)) stop("Either con or raw_db_path must be provided")
     stopifnot(file.exists(raw_db_path))
-    con <- dbConnect(duckdb(), dbdir = raw_db_path, read_only = TRUE)
+    con <- DBI::dbConnect(duckdb::duckdb(), dbdir = raw_db_path, read_only = TRUE)
     close_con <- TRUE
-  } else {
-    close_con <- FALSE
-  }
-  if (close_con) on.exit(dbDisconnect(con), add = TRUE)
+  } else close_con <- FALSE
+  if (close_con) on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
-  if (!dbExistsTable(con, table_name)) {
+  qi <- function(x, con) DBI::dbQuoteIdentifier(con, x)
+
+  if (!DBI::dbExistsTable(con, table_name)) {
     stop(sprintf("Table '%s' not found in database", table_name))
   }
 
@@ -69,7 +31,6 @@ tabulate_cases <- function(con = NULL,
     global_index <- NULL
   }
 
-  # --- validate baseline/future years ---
   if (length(baseline_year) != 1 || is.na(baseline_year) || baseline_year < 0) {
     stop("baseline_year must be a single non-negative integer")
   }
@@ -83,25 +44,43 @@ tabulate_cases <- function(con = NULL,
     if (length(future_years) == 0) stop("No valid future years remain after filtering")
   }
 
-  #clean_filename <- function(x) gsub("[^A-Za-z0-9_-]", "_", x)
-
   key_clause <- if (!is.null(parameter_index)) {
     sprintf("parameter_index = %d", as.integer(parameter_index))
   } else {
-    sprintf("global_index = %s", as.character(dbQuoteString(con, global_index)))
+    sprintf("global_index = %s", as.character(DBI::dbQuoteString(con, global_index)))
   }
 
-  # meta (for column echo & filenames)
+  # --- detect schema: raw vs precomputed ---
+  cols <- DBI::dbGetQuery(
+    con,
+    sprintf("
+      SELECT LOWER(column_name) AS name
+      FROM information_schema.columns
+      WHERE table_name = %s
+    ", DBI::dbQuoteString(con, table_name))
+  )$name
+
+  has_raw   <- all(c("n_inc_clinical_0_36500","n_age_0_36500") %in% cols)
+  has_rate  <- "cases_per_1000" %in% cols
+
+  if (!has_raw && !has_rate) {
+    stop(sprintf(
+      "Table '%s' must have either (n_inc_clinical_0_36500, n_age_0_36500) or cases_per_1000.",
+      table_name
+    ))
+  }
+
+  # meta (for echo)
   meta_sql <- sprintf("
     SELECT parameter_index, global_index
     FROM %s
     WHERE %s
     LIMIT 1
   ", qi(table_name, con), key_clause)
-  meta <- dbGetQuery(con, meta_sql)
+  meta <- DBI::dbGetQuery(con, meta_sql)
   if (!nrow(meta)) stop("No rows found for the requested index/key")
 
-  # Check available year range to warn on out-of-range requests
+  # year range warning
   yrange_sql <- sprintf("
     SELECT
       MIN(CAST(FLOOR(timesteps / %f) AS INTEGER)) AS min_year,
@@ -109,7 +88,7 @@ tabulate_cases <- function(con = NULL,
     FROM %s
     WHERE %s
   ", days_per_year, days_per_year, qi(table_name, con), key_clause)
-  yrng <- dbGetQuery(con, yrange_sql)
+  yrng <- DBI::dbGetQuery(con, yrange_sql)
   if (is.finite(yrng$min_year) && is.finite(yrng$max_year)) {
     req_years <- c(baseline_year, future_years)
     if (any(req_years < yrng$min_year | req_years > yrng$max_year)) {
@@ -125,42 +104,70 @@ tabulate_cases <- function(con = NULL,
   max_end   <- as.integer((max(years_all) + 1) * days_per_year)
   years_csv <- paste(years_all, collapse = ", ")
 
+  # --- SQL that adapts to schema ---
+  if (has_raw) {
+    base_measures <- "
+        CAST(n_inc_clinical_0_36500 AS DOUBLE) AS inc,
+        CAST(n_age_0_36500          AS DOUBLE) AS age"
+    not_null_pred <- "
+        AND n_inc_clinical_0_36500 IS NOT NULL
+        AND n_age_0_36500          IS NOT NULL"
+    annual_expr <- "
+        1000.0 * SUM(inc) / NULLIF(AVG(age), 0) AS avg_cases_per_1000"
+  } else {
+    base_measures <- "
+        CAST(cases_per_1000 AS DOUBLE) AS rate"
+    not_null_pred <- "
+        AND cases_per_1000 IS NOT NULL"
+    annual_expr <- "
+        AVG(rate) AS avg_cases_per_1000"
+  }
+
   sql <- sprintf("
     WITH base AS (
       SELECT
         simulation_index,
         CAST(FLOOR(timesteps / %f) AS INTEGER) AS year,
-        CAST(cases_per_1000 AS DOUBLE) AS cpk
+        timesteps,%s
       FROM %s
       WHERE %s
-        AND timesteps >= %d AND timesteps < %d
-        AND cases_per_1000 IS NOT NULL
+        AND timesteps >= %d AND timesteps < %d%s
+    ),
+    annual AS (
+      SELECT
+        simulation_index,
+        year,%s,
+        COUNT(DISTINCT timesteps) AS n_timesteps
+      FROM base
+      WHERE year IN (%s)
+      GROUP BY simulation_index, year
     )
     SELECT
       simulation_index,
       year,
-      AVG(cpk) AS avg_cases_per_1000,
-      COUNT(*) AS n_timesteps
-    FROM base
-    WHERE year IN (%s)
-    GROUP BY simulation_index, year
+      avg_cases_per_1000,
+      n_timesteps
+    FROM annual
     ORDER BY simulation_index, year
-  ", days_per_year, qi(table_name, con), key_clause, min_start, max_end, years_csv)
+  ",
+    days_per_year,
+    base_measures,
+    qi(table_name, con), key_clause,
+    min_start, max_end, not_null_pred,
+    annual_expr,
+    years_csv
+  )
 
-  ann <- dbGetQuery(con, sql)
+  ann <- DBI::dbGetQuery(con, sql)
   if (!nrow(ann)) stop("No data found for requested windows/years.")
 
-  # Split baseline vs future
   base_df <- ann[ann$year == baseline_year, c("simulation_index", "avg_cases_per_1000", "n_timesteps")]
   names(base_df) <- c("simulation_index", "baseline_cases_per_1000", "n_timesteps_baseline")
 
   fut_df  <- ann[ann$year %in% future_years, c("simulation_index", "year", "avg_cases_per_1000", "n_timesteps")]
   names(fut_df) <- c("simulation_index", "future_year", "future_cases_per_1000", "n_timesteps_future")
 
-  # Join baseline to future per simulation
   merged <- merge(fut_df, base_df, by = "simulation_index", all.x = TRUE)
-
-  # Compute deltas per simulation
   merged$delta_cases_per_1000 <- merged$future_cases_per_1000 - merged$baseline_cases_per_1000
   merged$percent_change <- ifelse(
     is.na(merged$baseline_cases_per_1000) | merged$baseline_cases_per_1000 == 0,
@@ -168,9 +175,7 @@ tabulate_cases <- function(con = NULL,
     100 * merged$delta_cases_per_1000 / merged$baseline_cases_per_1000
   )
 
-  # --- aggregate or return per-sim ---
   if (isTRUE(stochastic_average)) {
-    # Use only sims that have BOTH baseline and this future_year
     agg_list <- lapply(split(merged, merged$future_year), function(dfy) {
       dfy <- dfy[complete.cases(dfy[, c("future_cases_per_1000", "baseline_cases_per_1000")]), ]
       n_sims_used <- length(unique(dfy$simulation_index))
@@ -188,9 +193,7 @@ tabulate_cases <- function(con = NULL,
       )
     })
     out <- do.call(rbind, agg_list)
-
   } else {
-    # Per-simulation rows
     out <- merged[, c("simulation_index",
                       "future_year",
                       "baseline_cases_per_1000",
@@ -202,7 +205,6 @@ tabulate_cases <- function(con = NULL,
     out$parameter_index <- meta$parameter_index[1]
     out$global_index    <- meta$global_index[1]
     out$baseline_year   <- baseline_year
-    # Reorder columns
     out <- out[, c("parameter_index","global_index","simulation_index",
                    "baseline_year","future_year",
                    "baseline_cases_per_1000","future_cases_per_1000",
@@ -216,10 +218,11 @@ tabulate_cases <- function(con = NULL,
     fname <- if (!is.null(parameter_index)) {
       sprintf("cases_summary_param_%d.csv", as.integer(parameter_index))
     } else {
+      clean_filename <- function(x) gsub("[^A-Za-z0-9_-]", "_", x)
       sprintf("cases_summary_%s.csv", clean_filename(meta$global_index[1]))
     }
     fpath <- file.path(output_dir, fname)
-    write.csv(out, fpath, row.names = FALSE)
+    utils::write.csv(out, fpath, row.names = FALSE)
     message(sprintf("Summary written to: %s", fpath))
   }
 

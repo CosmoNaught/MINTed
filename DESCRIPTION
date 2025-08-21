@@ -1,5 +1,5 @@
 Package: MINTed
-Title: Post-process MINTs results stored in a DuckDB database.
+Title: Post-process MINTs results stored in a DuckDB database
 Version: 1.0.0
 Authors@R: 
     person("Cosmo", "Santoni", , "first.last@example.com", role = c("aut", "cre"))
