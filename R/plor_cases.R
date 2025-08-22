@@ -11,6 +11,8 @@
 #' @param full_name Optional flag to print the initial parameters used within the simulation launch.
 #' @param table_name Name of the base table. Default "simulation_results".
 #' @param days_per_year Numeric, default 365.
+#' @param fix_limit For cases: NULL = default behaviour; numeric length-2 c(ymin, ymax) fixes the y-axis range.
+
 #'
 #' @export
 plot_cases <- function(con = NULL,
@@ -22,7 +24,8 @@ plot_cases <- function(con = NULL,
                        output_dir = NULL,
                        full_name = FALSE,
                        table_name = "simulation_results",
-                       days_per_year = 365) {
+                       days_per_year = 365,
+                       fix_limit = NULL) {
 
   # --- connection handling ---
   if (is.null(con)) {
@@ -176,14 +179,24 @@ plot_cases <- function(con = NULL,
   # --- plot ---
   x_min <- min(sim_df$year, na.rm = TRUE)
   x_max <- max(sim_df$year, na.rm = TRUE)
-  y_min <- min(sim_df$cases_per_1000, mean_df$mean_cases_per_1000, na.rm = TRUE)
-  y_max <- max(sim_df$cases_per_1000, mean_df$mean_cases_per_1000, na.rm = TRUE)
-  if (!is.finite(y_min) || !is.finite(y_max)) { y_min <- 0; y_max <- 1 }
+
+  # data-driven default limits
+  y_rng <- range(c(sim_df$cases_per_1000, mean_df$mean_cases_per_1000), finite = TRUE)
+  if (!all(is.finite(y_rng))) y_rng <- c(0, 1)
+
+  # apply optional fixed limits (cases: only numeric length-2)
+  if (!is.null(fix_limit)) {
+    if (is.numeric(fix_limit) && length(fix_limit) == 2 && all(is.finite(fix_limit))) {
+      y_rng <- sort(as.numeric(fix_limit))
+    } else {
+      warning("fix_limit for cases must be a numeric length-2 vector; ignoring.")
+    }
+  }
 
   plot(
     NA,
     xlim = c(x_min, x_max),
-    ylim = c(y_min, y_max),
+    ylim = y_rng,
     xlab = "Time (years)",
     ylab = "Cases per 1000",
     main = make_main(meta, full_name),

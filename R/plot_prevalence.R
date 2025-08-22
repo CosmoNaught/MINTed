@@ -11,6 +11,9 @@
 #' @param full_name Optinal flag to print the initial parameters used within the simulation launch
 #' @param table_name Name of the base table. Default "simulation_results".
 #' @param days_per_year Numeric, default 365.
+#' @param fix_limit For prevalence plots only: NULL = default behaviour;
+#' TRUE = fix y-axis to 0 1; numeric length-2 c(ymin, ymax) = fix to given range.
+
 #'
 #' @export
 plot_prevalence <- function(con = NULL,
@@ -22,7 +25,8 @@ plot_prevalence <- function(con = NULL,
                            output_dir = NULL,
                            full_name = FALSE,
                            table_name = "simulation_results",
-                           days_per_year = 365) {
+                           days_per_year = 365,
+                           fix_limit = NULL) {
   
   # Connection handling
   if (is.null(con)) {
@@ -104,7 +108,8 @@ plot_prevalence <- function(con = NULL,
   treatment_dt_bednet, treatment_dt_irs, treatment_dt_lsm, 
   eir,
   Q0,
-  phi_bednets seasonal,
+  phi_bednets,
+  seasonal,
   routine,
   dn0_use,
   dn0_future,
@@ -144,19 +149,30 @@ plot_prevalence <- function(con = NULL,
   }
   
   # ranges
+  # ranges (+ optional fixed y-limits for prevalence)
   x_min <- min(sim_df$year, na.rm = TRUE)
   x_max <- max(sim_df$year, na.rm = TRUE)
-  y_min <- min(sim_df$prevalence, mean_df$mean_prevalence, na.rm = TRUE)
-  y_max <- max(sim_df$prevalence, mean_df$mean_prevalence, na.rm = TRUE)
-  
-  if (!is.finite(y_min) || !is.finite(y_max)) {
-    y_min <- 0; y_max <- 1
+
+  # default (data-driven) y-limits
+  y_rng <- range(c(sim_df$prevalence, mean_df$mean_prevalence), finite = TRUE)
+  if (!all(is.finite(y_rng))) y_rng <- c(0, 1)
+
+  # apply fix_limit:
+  # prevalence: TRUE -> [0,1]; numeric(2) -> user-specified; NULL -> default
+  if (isTRUE(fix_limit)) {
+    y_rng <- c(0, 1)
+  } else if (!is.null(fix_limit)) {
+    if (is.numeric(fix_limit) && length(fix_limit) == 2 && all(is.finite(fix_limit))) {
+      y_rng <- sort(as.numeric(fix_limit))
+    } else {
+      warning("Ignoring invalid fix_limit; expected TRUE or numeric length-2.")
+    }
   }
 
   plot(
     NA,
     xlim = c(x_min, x_max),
-    ylim = c(y_min, y_max),
+    ylim = y_rng,
     xlab = "Time (years)",
     ylab = "Prevalence",
     main = make_main(meta, full_name),

@@ -14,7 +14,8 @@ plot_cases(
   output_dir = NULL,
   full_name = FALSE,
   table_name = "simulation_results",
-  days_per_year = 365
+  days_per_year = 365,
+  fix_limit = NULL
 )
 }
 \arguments{
@@ -38,6 +39,8 @@ Required if con is not provided.}
 \item{table_name}{Name of the base table. Default "simulation_results".}
 
 \item{days_per_year}{Numeric, default 365.}
+
+\item{fix_limit}{For cases: NULL = default behaviour; numeric length-2 c(ymin, ymax) fixes the y-axis range.}
 }
 \description{
 Plot cases per 1000 over time (years) from the raw DuckDB

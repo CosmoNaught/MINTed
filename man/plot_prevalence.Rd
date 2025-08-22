@@ -14,7 +14,8 @@ plot_prevalence(
   output_dir = NULL,
   full_name = FALSE,
   table_name = "simulation_results",
-  days_per_year = 365
+  days_per_year = 365,
+  fix_limit = NULL
 )
 }
 \arguments{
@@ -38,6 +39,9 @@ Required if con is not provided.}
 \item{table_name}{Name of the base table. Default "simulation_results".}
 
 \item{days_per_year}{Numeric, default 365.}
+
+\item{fix_limit}{For prevalence plots only: NULL = default behaviour;
+TRUE = fix y-axis to 0 1; numeric length-2 c(ymin, ymax) = fix to given range.}
 }
 \description{
 Plot prevalence over time (years) from the raw DuckDB
